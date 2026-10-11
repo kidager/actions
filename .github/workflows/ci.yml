@@ -15,5 +15,5 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Lint the actions' scripts
         run: |
-          yq -r '.runs.steps[].run // empty' token/action.yml > /tmp/token.sh
+          yq '.runs.steps[] | select(has("run")) | .run' token/action.yml > /tmp/token.sh
           shellcheck --shell=bash /tmp/token.sh
