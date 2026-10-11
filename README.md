@@ -12,7 +12,7 @@ permissions:
 
 steps:
   - id: bot
-    uses: kidager/actions/token@<sha> # v0.1.0
+    uses: kidager/actions/token@<sha> # v1.0.0
   - uses: marocchino/sticky-pull-request-comment@<sha>
     with:
       GITHUB_TOKEN: ${{ steps.bot.outputs.token }}
