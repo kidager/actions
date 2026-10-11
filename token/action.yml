@@ -1,0 +1,57 @@
+name: kidager-bot token
+description: Exchanges the run's OIDC token for a kidager-bot installation token of the current repository
+
+inputs:
+  permissions:
+    description: 'JSON object of permissions, e.g. {"contents": "write"}. Defaults to issues and pull_requests write'
+    required: false
+    default: ''
+  url:
+    description: Token endpoint
+    required: false
+    default: https://ghbot.jacem.ch/api/token
+  audience:
+    description: OIDC audience the endpoint expects
+    required: false
+    default: kidager-bot
+
+outputs:
+  token:
+    description: Installation token, valid for up to an hour
+    value: ${{ steps.exchange.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - id: exchange
+      shell: bash
+      env:
+        PERMISSIONS: ${{ inputs.permissions }}
+        URL: ${{ inputs.url }}
+        AUDIENCE: ${{ inputs.audience }}
+      run: |
+        set -euo pipefail
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::error::No OIDC token available: the job needs 'permissions: id-token: write' (not available to pull requests from forks)"
+          exit 1
+        fi
+        oidc=$(curl -fsS -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}" | jq -r .value)
+        echo "::add-mask::${oidc}"
+        # The OIDC token goes in the body: the endpoint's request log keeps the headers
+        if [ -n "${PERMISSIONS}" ]; then
+          body=$(jq -cn --arg token "${oidc}" --argjson permissions "${PERMISSIONS}" '{token: $token, permissions: $permissions}')
+        else
+          body=$(jq -cn --arg token "${oidc}" '{token: $token}')
+        fi
+        response=$(curl -sS -X POST -H "Content-Type: application/json" \
+          --data @- -w '\n%{http_code}' "${URL}" <<<"${body}")
+        status=${response##*$'\n'}
+        response=${response%$'\n'*}
+        if [ "${status}" != 200 ]; then
+          echo "::error::Token exchange failed (${status}): $(jq -r '.error // empty' <<<"${response}" 2>/dev/null || true)"
+          exit 1
+        fi
+        token=$(jq -r .token <<<"${response}")
+        echo "::add-mask::${token}"
+        echo "token=${token}" >> "${GITHUB_OUTPUT}"
